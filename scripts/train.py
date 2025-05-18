@@ -74,7 +74,7 @@ def train_step(args, curriculum, model, xs, ys, optimizer, ctx, scaler):
 
 def main(args, device):
     # TORCH 2.0 ZONE ###############################
-    torch.set_float32_matmul_precision('highest')
+    # torch.set_float32_matmul_precision('highest')
     torch.backends.cuda.matmul.allow_tf32 = True  # allow tf32 on matmul
     torch.backends.cudnn.allow_tf32 = True  # allow tf32 on cudnn
     dtype = 'float16'  # 'bfloat16', 'float32'
@@ -149,7 +149,7 @@ def main(args, device):
             real_task = task_sampler()
             xs, ys = real_task.xs.float(), real_task.ys.float()
 
-        loss, output, total_norm, grad_norm_dict = train_step(args, curriculum, model, xs, ys, optimizer, ctx, scaler)
+        train_loss, output, total_norm, grad_norm_dict = train_step(args, curriculum, model, xs, ys, optimizer, ctx, scaler)
 
         # EVALUATION ======================================
         point_wise_tags = list(range(curriculum.n_points))  # [0, 1, 2, ..., n-1]
@@ -169,10 +169,11 @@ def main(args, device):
                         else:
                             raise NotImplementedError
                         point_wise_loss = (output - ys).square().mean(dim=0)
-                        loss = point_wise_loss.mean()
+                        eval_loss = point_wise_loss.mean()
             wandb.log(
                 {
-                    "overall_loss": loss,
+                    "overall_train_loss": train_loss,
+                    "overall_eval_loss": eval_loss,
                     "loop_times": curriculum.n_loops,
                     "grad_norm/layerwise": grad_norm_dict,
                     "grad_norm": total_norm,
@@ -188,7 +189,7 @@ def main(args, device):
 
         curriculum.update()
 
-        pbar.set_description(f"loss {loss}")
+        pbar.set_description(f"loss {eval_loss}")
         if i % args.training.save_every_steps == 0:
             training_state = {
                 "model_state_dict": model.state_dict(),
