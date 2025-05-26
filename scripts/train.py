@@ -74,7 +74,7 @@ def train_step(args, curriculum, model, xs, ys, optimizer, ctx, scaler):
 
 def main(args, device):
     # TORCH 2.0 ZONE ###############################
-    # torch.set_float32_matmul_precision('highest')
+    torch.set_float32_matmul_precision('highest')
     torch.backends.cuda.matmul.allow_tf32 = True  # allow tf32 on matmul
     torch.backends.cudnn.allow_tf32 = True  # allow tf32 on cudnn
     dtype = 'float16'  # 'bfloat16', 'float32'
@@ -110,14 +110,20 @@ def main(args, device):
     args, model, optimizer, curriculum, state_path, starting_step = load_pretrained_model(
         args, model, optimizer, curriculum, device)
 
+    # Initializing the W_B globally for both train and test.
+    w_b = torch.randn(args.training.batch_size, args.model.n_dims, 1, device=device)  # [B, d, 1], global w_b value for both train and test
+    w_b[:, curriculum.n_dims_truncated:] = 0
+    
     if args.training.use_fixed_dataset:
         from main_utils import gen_dataloader
+        
         task_sampler = get_task_sampler(
             task_name=args.training.task_name,
             batch_size=args.training.batch_size,
             n_points=curriculum.n_points,
             n_dims=args.model.n_dims,
             n_dims_truncated=curriculum.n_dims_truncated,
+            # w_b=w_b,
             device=device,
             sparsity=args.training.sparsity,
         )
@@ -142,6 +148,7 @@ def main(args, device):
                 n_points=curriculum.n_points,
                 n_dims=args.model.n_dims,
                 n_dims_truncated=curriculum.n_dims_truncated,
+                # w_b=w_b,
                 device=device,
                 sparsity=args.training.sparsity,
             )
@@ -170,26 +177,24 @@ def main(args, device):
                             raise NotImplementedError
                         point_wise_loss = (output - ys).square().mean(dim=0)
                         eval_loss = point_wise_loss.mean()
-            wandb.log(
-                {
-                    "overall_train_loss": train_loss,
-                    "overall_eval_loss": eval_loss,
-                    "loop_times": curriculum.n_loops,
-                    "grad_norm/layerwise": grad_norm_dict,
-                    "grad_norm": total_norm,
-                    "pointwise/loss": dict(
-                        zip(point_wise_tags, point_wise_loss.detach().cpu().numpy())
-                    ),
-                    "n_points": curriculum.n_points,
-                    "n_dims": curriculum.n_dims_truncated,
-                    "lr": optimizer.param_groups[0]['lr'],
-                },
-                step=i,
-            )
-
+            log_dict = {
+                "overall_train_loss": train_loss,
+                "loop_times": curriculum.n_loops,
+                "grad_norm/layerwise": grad_norm_dict,
+                "grad_norm": total_norm,
+                "pointwise/loss": dict(
+                    zip(point_wise_tags, point_wise_loss.detach().cpu().numpy())
+                ),
+                "n_points": curriculum.n_points,
+                "n_dims": curriculum.n_dims_truncated,
+                "lr": optimizer.param_groups[0]['lr'],
+            }
+            if args.training.use_fixed_dataset and eval_loss is not None:
+                log_dict["overall_eval_loss"] = eval_loss
+            wandb.log(log_dict, step=i)
         curriculum.update()
 
-        pbar.set_description(f"loss {eval_loss}")
+        pbar.set_description(f"training loss {train_loss}")
         if i % args.training.save_every_steps == 0:
             training_state = {
                 "model_state_dict": model.state_dict(),

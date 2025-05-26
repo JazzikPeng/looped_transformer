@@ -31,6 +31,7 @@ class Task:
         self.n_dims_truncated = n_dims_truncated
         self.b_size = batch_size
         self.n_points = n_points
+        # self.w_b = w_b # [B, d, 1] This is randomly generated weight for regression tasks.
 
     @staticmethod
     def get_metric():
@@ -45,7 +46,7 @@ def get_task_sampler(
     task_name, batch_size, n_points, n_dims, n_dims_truncated, device, sparsity=None
 ):
     task_names_to_classes = {
-        "linear_regression": LinearRegression,
+        "linear_regression": LinearRegression, # LinearRegressionFixedWB, # Only works on linear_regression for now. 
         "noisy_linear_regression": NoisyLinearRegression,  # std=0.1
         "sparse_linear_regression": SparseLinearRegression,
         "relu_2nn_regression": Relu2nnRegression,
@@ -53,10 +54,31 @@ def get_task_sampler(
     }
     if task_name in task_names_to_classes:
         task_cls = task_names_to_classes[task_name]
+        # return lambda **args: task_cls(batch_size, n_points, n_dims, n_dims_truncated, w_b, device, sparsity=sparsity, **args)
         return lambda **args: task_cls(batch_size, n_points, n_dims, n_dims_truncated, device, sparsity=sparsity, **args)
     else:
         print("Unknown task")
         raise NotImplementedError
+
+class LinearRegressionFixedWB(Task):
+
+    def __init__(self, batch_size, n_points, n_dims, n_dims_truncated, w_b, device, sparsity=None):
+        """scale: a constant by which to scale the randomly sampled weights."""
+        super(LinearRegressionFixedWB, self).__init__(n_dims, n_dims_truncated, w_b, n_points, batch_size)
+        self.device = device
+        self.xs = torch.randn(batch_size, n_points, n_dims, device=device)  # [B, n, d]
+        self.xs[..., n_dims_truncated:] = 0
+        w_b[:, n_dims_truncated:] = 0
+        self.w_b = w_b
+        self.ys = (self.xs @ self.w_b).sum(-1)  # [B, n]
+
+    @staticmethod
+    def get_metric():
+        return squared_error
+
+    @staticmethod
+    def get_training_metric():
+        return mean_squared_error
 
 
 class LinearRegression(Task):
@@ -82,9 +104,9 @@ class LinearRegression(Task):
 
 
 class NoisyLinearRegression(LinearRegression):
-    def __init__(self, batch_size, n_points, n_dims, n_dims_truncated, device, sparsity=None, std=0.1):
+    def __init__(self, batch_size, n_points, n_dims, n_dims_truncated, w_b, device, sparsity=None, std=0.1):
         """scale: a constant by which to scale the randomly sampled weights."""
-        super(NoisyLinearRegression, self).__init__(batch_size, n_points, n_dims, n_dims_truncated, device)
+        super(NoisyLinearRegression, self).__init__(batch_size, n_points, n_dims, n_dims_truncated, w_b, device)
         self.ys += torch.randn_like(self.ys) * std
 
     @staticmethod
@@ -94,7 +116,6 @@ class NoisyLinearRegression(LinearRegression):
     @staticmethod
     def get_training_metric():
         return mean_squared_error
-
 
 class SparseLinearRegression(LinearRegression):
     def __init__(self, batch_size, n_points, n_dims, n_dims_truncated, device, sparsity=3):
