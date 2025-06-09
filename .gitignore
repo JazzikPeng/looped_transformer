@@ -15,4 +15,7 @@ results*/*
 
 *.log
 *.json
-*.wandb
+*.wandb*.pyc
+wandb/
+results2/
+*.pt
