@@ -1,3 +1,8 @@
 results2/*
 results/*
 *.json
+results2/
+__pycache__/
+*.pyc
+*.pt
+wandb/
