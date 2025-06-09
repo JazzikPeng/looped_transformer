@@ -1,5 +1,5 @@
 wandb:
-    project: Lets_Loop2
+    project: Lets_Loop_random_w_b
     notes:
     log_every_steps: 100
 

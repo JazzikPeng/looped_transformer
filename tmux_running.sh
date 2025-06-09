@@ -2,7 +2,7 @@
 
 SESSION_NAME="tf_loop"
 COMMAND="bash exec/script_loop.sh"
-ENV_NAME="loop_tf2"
+ENV_NAME="loop_tf"
 
 # Create the session if it doesn't exist
 tmux has-session -t "$SESSION_NAME" 2>/dev/null

@@ -1,5 +1,5 @@
 wandb:
-    project: Lets_Loop2_dev
+    project: Lets_Loop_random_w_b
     notes:
     log_every_steps: 100
 
@@ -17,9 +17,6 @@ model:
 training:
     batch_size: 64
     task_name: linear_regression
-    use_fixed_dataset: True
-    train_size: 25000
-    test_size: 2560
     learning_rate: 0.0001
     weight_decay: 0.0
     train_steps: 500000
