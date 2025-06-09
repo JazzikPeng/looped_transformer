@@ -11,3 +11,7 @@ results*/*
 ./*.json
 ./*.wandb
 ./*.pyc
+
+*.log
+*.json
+*.wandb
