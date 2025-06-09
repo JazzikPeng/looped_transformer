@@ -6,3 +6,8 @@
 results/*
 results*/*
 */__pycache__*
+
+./*.log
+./*.json
+./*.wandb
+./*.pyc
