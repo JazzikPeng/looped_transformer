@@ -6,3 +6,11 @@ __pycache__/
 *.pyc
 *.pt
 wandb/
+./results
+.vscode/
+./scripts/__pycache__/
+./results*
+./results/*
+results/*
+results*/*
+*/__pycache__*
