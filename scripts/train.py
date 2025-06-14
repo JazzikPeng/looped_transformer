@@ -11,6 +11,7 @@ from schema import schema
 from models import build_model
 from tasks import get_task_sampler
 from main_utils import init_device, get_run_id, load_pretrained_model
+from torch.nn import functional as F
 # from eval import get_run_metrics
 
 
@@ -41,6 +42,18 @@ def train_step(args, curriculum, model, xs, ys, optimizer, ctx, scaler):
             y_pred = model(xs, ys, add_inputs_embeds=args.training.add_inputs_embeds)  # [B, n]
             # list of [B, n], length K + 1, get rid of the 0-th one
             loss = (ys - y_pred).square().mean()  # auto on both K and n (number of in context samples)
+    elif args.model.family in ['gpt2_with_emb_layer']:
+        # Cast xs, and ys to long
+        xs = xs.long().cuda()
+        ys = ys.long().cuda()
+        y_pred = model(xs, ys, add_inputs_embeds=args.training.add_inputs_embeds)  # [B, n]
+        # compute classification loss, y_pred: [B, N, n_classes], ys: [B, N, 1]
+        ys = ys.squeeze(-1)  # [B, N]
+        
+        y_pred = y_pred.reshape(-1, y_pred.size(-1))  # [B * N, n_classes]
+        ys = ys.reshape(-1)  # [B * N]
+        # compute cross entropy loss
+        loss = F.cross_entropy(y_pred, ys)
     elif args.model.family in ['gpt2_loop']:
         n_loops = curriculum.n_loops  # K
         if ctx is not None:
@@ -111,12 +124,12 @@ def main(args, device):
         args, model, optimizer, curriculum, device)
 
     # Initializing the W_B globally for both train and test.
-    w_b = torch.randn(args.training.batch_size, args.model.n_dims, 1, device=device)  # [B, d, 1], global w_b value for both train and test
-    w_b[:, curriculum.n_dims_truncated:] = 0
-    
+    # w_b = torch.randn(args.training.batch_size, args.model.n_dims, 1, device=device)  # [B, d, 1], global w_b value for both train and test
+    # w_b[:, curriculum.n_dims_truncated:] = 0
+        
     if args.training.use_fixed_dataset:
         from main_utils import gen_dataloader
-        
+                
         task_sampler = get_task_sampler(
             task_name=args.training.task_name,
             batch_size=args.training.batch_size,
@@ -161,7 +174,10 @@ def main(args, device):
         # EVALUATION ======================================
         point_wise_tags = list(range(curriculum.n_points))  # [0, 1, 2, ..., n-1]
         if i % args.wandb.log_every_steps == 0:
-            point_wise_loss = (output - ys).square().mean(dim=0)  # [n,]
+            if args.model.pred_type == 'regression':
+                point_wise_loss = (output - ys).square().mean(dim=0)
+            elif args.model.pred_type == 'classification':
+                point_wise_loss = F.cross_entropy(output, ys.long().reshape(-1))  # [B, n]
             if args.training.use_fixed_dataset:
                 # eval
                 with torch.no_grad():
@@ -173,22 +189,41 @@ def main(args, device):
                             n_loops = curriculum.n_loops  # K
                             y_pred_list = model(xs, ys, 0, n_loops)
                             output = y_pred_list[-1]  # [B, n]
+                        elif args.model.family in ['gpt2_with_emb_layer']:
+                            xs = xs.long().cuda()
+                            ys = ys.long().cuda()
+                            output = model(xs, ys)  # [B,]
                         else:
                             raise NotImplementedError
-                        point_wise_loss = (output - ys).square().mean(dim=0)
-                        eval_loss = point_wise_loss.mean()
-            log_dict = {
-                "overall_train_loss": train_loss,
-                "loop_times": curriculum.n_loops,
-                "grad_norm/layerwise": grad_norm_dict,
-                "grad_norm": total_norm,
-                "pointwise/loss": dict(
-                    zip(point_wise_tags, point_wise_loss.detach().cpu().numpy())
-                ),
-                "n_points": curriculum.n_points,
-                "n_dims": curriculum.n_dims_truncated,
-                "lr": optimizer.param_groups[0]['lr'],
-            }
+                        if args.model.pred_type == 'regression':
+                            point_wise_loss = (output - ys).square().mean(dim=0)
+                            eval_loss = point_wise_loss.mean()
+                        elif args.model.pred_type == 'classification':
+                            point_wise_loss = F.cross_entropy(output.reshape(-1, output.size(-1)), ys.long().reshape(-1))
+                            eval_loss = point_wise_loss
+            if args.model.family == "gpt2_with_emb_layer":
+                log_dict = {
+                    "overall_train_loss": train_loss,
+                    "loop_times": curriculum.n_loops,
+                    "grad_norm/layerwise": grad_norm_dict,
+                    "grad_norm": total_norm,
+                    "n_points": curriculum.n_points,
+                    "n_dims": curriculum.n_dims_truncated,
+                    "lr": optimizer.param_groups[0]['lr'],
+                }
+            else:
+                log_dict = {
+                    "overall_train_loss": train_loss,
+                    "loop_times": curriculum.n_loops,
+                    "grad_norm/layerwise": grad_norm_dict,
+                    "grad_norm": total_norm,
+                    "pointwise/loss": dict(
+                        zip(point_wise_tags, point_wise_loss.detach().cpu().numpy())
+                    ),
+                    "n_points": curriculum.n_points,
+                    "n_dims": curriculum.n_dims_truncated,
+                    "lr": optimizer.param_groups[0]['lr'],
+                }
             if args.training.use_fixed_dataset and eval_loss is not None:
                 log_dict["overall_eval_loss"] = eval_loss
             wandb.log(log_dict, step=i)

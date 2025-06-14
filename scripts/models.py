@@ -1,8 +1,10 @@
 import torch
 import torch.nn as nn
 from nano_gpt import GPT2Model, GPT2Config, LayerNorm
+from phop_generation import TOKEN_MAP
 
 MAX_NUM_CLASS = 2  # for openML classification task
+NUM_CONTROL_TOKENS = len(TOKEN_MAP) # Those are the special tokens, p, s, e, hop
 
 def build_model(conf):
     if conf.family == "gpt2":
@@ -32,12 +34,86 @@ def build_model(conf):
             n_layer=conf.n_layer,
             n_head=conf.n_head,
         )
+    elif conf.family == 'gpt2_with_emb_layer': # this layer is used to include a embedding layer
+        model = TransformerModelWithEmbLayer(
+            n_dims=conf.n_dims,
+            n_positions=conf.n_positions,
+            n_embd=conf.n_embd,
+            n_layer=conf.n_layer,
+            n_head=conf.n_head,
+            pred_type=conf.pred_type,
+        )
     else:
         raise NotImplementedError
 
     return model
 
+class TransformerModelWithEmbLayer(nn.Module):
+    def __init__(self, n_dims, n_positions, n_embd=128, n_layer=12, n_head=4, pred_type='classification', emb_size=17):
+        """
+        :param emb_size: The embedding size, not necessarily equal to number of vocabulary size, 
+            cause I included p value and other speical tokens in the input sequence as well.
+        """
+        super(TransformerModelWithEmbLayer, self).__init__()
+        self.freq = 2
+        self.ind = 0
+        configuration = GPT2Config()
+        configuration.block_size = 256 + 5 + 17 # self.freq * n_positions + 1
+        configuration.n_layer = n_layer
+        configuration.n_head = n_head
+        configuration.n_embd = n_embd
+        configuration.dropout = 0.0
+        configuration.bias = True
+        configuration.dropout = 0.
+        self.configuration = configuration
 
+        self.n_positions = n_positions  # n = points in this setting
+        self.n_dims = n_dims  # input dimension, d_in
+        self.n_embd = n_embd  # d
+        self.n_layer = n_layer
+        self._pred_type = pred_type
+
+        self.emb_layer = nn.Embedding(emb_size, n_embd)  # for classification task
+        self._read_in = nn.Linear(n_embd, n_embd)
+        self._backbone = GPT2Model(self.configuration)
+        if self._pred_type == 'regression':
+            self._read_out = nn.Linear(n_embd, 1)
+        elif self._pred_type == 'classification':
+            self._read_out = nn.Linear(n_embd, emb_size)  # NOTE: hard-code
+
+        self.print_flag = False
+    
+    def forward(self, xs, ys, add_inputs_embeds=False):
+        """
+        :param xs: [B, n, d]
+        :param ys: [B, n]
+        :return:
+        """
+
+        B, n, d_in = xs.shape # [B, n, 1]
+        pred_seq_len = ys.shape[1]  # [B, p+1]
+        # Apply embedding layer to xs and ys
+        xs = self.emb_layer(xs).squeeze(2)  # [B, :, 1, d] -> [B, :, d]
+        ys = self.emb_layer(ys).squeeze(2)  # [B, :, 1, d] -> [B, :, d]
+        # xs: [B, seq_len + 5, d], ys: [B, p+1, d]
+        zs = torch.cat((xs, ys), dim=1) # [B, seq_len + 5 + p+1, d]
+        # zs = self._combine(xs, ys)  # [B, n, d_in], [B, n], [B, n] -> [B, 2n, d_in + 1]
+        # embeds = self._read_in(zs)  # [B, 2n, d_in + 1] -> [B, 2n, d]
+        embeds = self._read_in(zs)
+
+        f_output = self._backbone(
+            inputs_embeds=embeds, position_ids=None, rm_pos_embd=False, add_inputs_embeds=add_inputs_embeds)  # [B, 2n, d]
+        prediction = self._read_out(f_output)  # [B, 2n, d] -> [B, 2n, 1]
+        if self._pred_type == 'regression':
+            y = prediction[:, self.ind::self.freq, 0]
+        elif self._pred_type == 'classification':
+            y = prediction[:, -pred_seq_len:]
+            
+        else:
+            raise NotImplementedError
+
+        return y
+        
 class TransformerModel(nn.Module):
     def __init__(self, n_dims, n_positions, n_embd=128, n_layer=12, n_head=4, pred_type='regression'):
 

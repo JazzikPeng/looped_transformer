@@ -14,6 +14,21 @@ def mean_squared_error(ys_pred, ys):
 def accuracy(ys_pred, ys):
     return (ys == ys_pred.sign()).float()
 
+def cross_entropy_loss(ys_pred, ys):
+    """
+    Computes the cross-entropy loss for multi-class classification.
+    ys_pred: [B, n] - predicted values (logits)
+    ys: [B, n] - target values (0 or 1)
+    """
+    return F.cross_entropy(ys_pred, ys)
+
+def mean_cross_entropy(ys_pred, ys):
+    """
+    Computes the mean cross-entropy loss for multi-class classification.
+    ys_pred: [B, n] - predicted values (logits)
+    ys: [B, n] - target values (0 or 1)
+    """
+    return F.cross_entropy(ys_pred, ys).mean()
 
 sigmoid = torch.nn.Sigmoid()
 bce_loss = torch.nn.BCELoss()
@@ -51,11 +66,15 @@ def get_task_sampler(
         "sparse_linear_regression": SparseLinearRegression,
         "relu_2nn_regression": Relu2nnRegression,
         "decision_tree": DecisionTree,
+        "phop_task": PhopTask,
     }
-    if task_name in task_names_to_classes:
+    if task_name in task_names_to_classes and task_name != "phop_task":
         task_cls = task_names_to_classes[task_name]
         # return lambda **args: task_cls(batch_size, n_points, n_dims, n_dims_truncated, w_b, device, sparsity=sparsity, **args)
         return lambda **args: task_cls(batch_size, n_points, n_dims, n_dims_truncated, device, sparsity=sparsity, **args)
+    elif task_name == "phop_task":
+        task_cls = task_names_to_classes[task_name]
+        return lambda **args: task_cls(batch_size, n_points, device, p=16, file_path="./data/p_hop_sequences_mini.txt", **args)
     else:
         print("Unknown task")
         raise NotImplementedError
@@ -80,7 +99,63 @@ class LinearRegressionFixedWB(Task):
     def get_training_metric():
         return mean_squared_error
 
+class PhopTask(Task):
+    """
+    :param file_path: Path to the file containing the pHop data.
+    :param p: The number of hops to consider.
+    """
+    _data_cache = {}
+    
+    def __init__(self, batch_size, n_points, device, p, file_path, n_dims=1, n_dims_truncated=0, sparsity=None):
+        super(PhopTask, self).__init__(n_dims, n_dims_truncated, n_points, batch_size)
+        # [B, n, 1] -> Map to [B, n, emb_dim] using torch embedding layer
+        self.device = device
+        self.file_path = file_path # "./data/p_hop_sequences_mini.txt"
+        self.p = p
+        # Check if data is already cached
+        if file_path not in PhopTask._data_cache:
+            self._read_()
+            PhopTask._data_cache[file_path] = self.data
+        else:
+            # Read the data from the file and cache it.
+            self.data = PhopTask._data_cache[file_path].to(device)
+        
+        # Sample batch_size of data from cached data
+        if self.data.shape[0] < batch_size:
+            raise ValueError(f"Not enough data in {file_path} to sample {batch_size} batches.")
+        
+        indices = torch.randperm(self.data.shape[0])[:batch_size]
+        self.train_data = self.data[indices]
+        self.train_data = self.train_data.unsqueeze(-1)
+        self.xs = self.train_data[:, :-p-1, :] # p=16 will have 17 numbers. 
+        self.ys = self.train_data[:, -p-1:, :]
+    
+    def _read_(self):
+        # Read files from the file_path
+        with open(self.file_path, 'r') as f:
+            lines = f.readlines()
+        # Parse the lines into a list of lists
+        data = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            data.append([float(x) for x in parts])
+        # Convert the data to a tensor
+        data_tensor = torch.tensor(data, dtype=torch.int32, device=self.device) # Need to be int to use emb layer
+        # Reshape the data to [B, n, 1]
+        # data_tensor = data_tensor.view(self.b_size, self.n_points, 1)  # [B, n, 1]
+        self.data = data_tensor
+        
+    @staticmethod
+    def get_metric():
+        return cross_entropy
 
+    @staticmethod
+    def get_training_metric():
+        return mean_cross_entropy
+        
 class LinearRegression(Task):
 
     def __init__(self, batch_size, n_points, n_dims, n_dims_truncated, device, sparsity=None):
