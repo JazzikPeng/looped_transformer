@@ -55,7 +55,6 @@ def rm_orig_mod(state_dict):
             state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
     return state_dict
 
-
 def load_pretrained_model(args, model, optimizer, curriculum, device):
     state_path = os.path.join(args.out_dir, "state.pt")
     starting_step = 0

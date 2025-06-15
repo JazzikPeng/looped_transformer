@@ -1,6 +1,7 @@
 import math
 import torch
 import torch.nn.functional as F
+import numpy as np
 
 
 def squared_error(ys_pred, ys):
@@ -74,7 +75,7 @@ def get_task_sampler(
         return lambda **args: task_cls(batch_size, n_points, n_dims, n_dims_truncated, device, sparsity=sparsity, **args)
     elif task_name == "phop_task":
         task_cls = task_names_to_classes[task_name]
-        return lambda **args: task_cls(batch_size, n_points, device, p=16, file_path="./data/p_hop_sequences_mini.txt", **args)
+        return lambda **args: task_cls(batch_size, n_points, device, p=16, file_path="./data/p_hop_sequences.txt", **args) # "./data/p_hop_sequences_mini.txt"
     else:
         print("Unknown task")
         raise NotImplementedError
@@ -105,8 +106,9 @@ class PhopTask(Task):
     :param p: The number of hops to consider.
     """
     _data_cache = {}
+    request_batch_count = 0  # This will be used to select indices for training data.
     
-    def __init__(self, batch_size, n_points, device, p, file_path, n_dims=1, n_dims_truncated=0, sparsity=None):
+    def __init__(self, batch_size, n_points, device, p, file_path, n_dims=1, n_dims_truncated=0):
         super(PhopTask, self).__init__(n_dims, n_dims_truncated, n_points, batch_size)
         # [B, n, 1] -> Map to [B, n, emb_dim] using torch embedding layer
         self.device = device
@@ -118,35 +120,27 @@ class PhopTask(Task):
             PhopTask._data_cache[file_path] = self.data
         else:
             # Read the data from the file and cache it.
-            self.data = PhopTask._data_cache[file_path].to(device)
+            self.data = PhopTask._data_cache[file_path]
         
         # Sample batch_size of data from cached data
         if self.data.shape[0] < batch_size:
             raise ValueError(f"Not enough data in {file_path} to sample {batch_size} batches.")
         
-        indices = torch.randperm(self.data.shape[0])[:batch_size]
-        self.train_data = self.data[indices]
+        # indices = torch.randperm(self.data.shape[0])[:batch_size]
+        self.train_data = self.data[PhopTask.request_batch_count: PhopTask.request_batch_count + batch_size, :]  # [B, n, 1]
+            
+        PhopTask.request_batch_count += batch_size
+        self.train_data = torch.tensor(self.train_data, dtype=torch.int32, device=self.device)  # Convert to torch tensor
         self.train_data = self.train_data.unsqueeze(-1)
         self.xs = self.train_data[:, :-p-1, :] # p=16 will have 17 numbers. 
         self.ys = self.train_data[:, -p-1:, :]
     
     def _read_(self):
-        # Read files from the file_path
-        with open(self.file_path, 'r') as f:
-            lines = f.readlines()
-        # Parse the lines into a list of lists
-        data = []
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            parts = line.split()
-            data.append([float(x) for x in parts])
-        # Convert the data to a tensor
-        data_tensor = torch.tensor(data, dtype=torch.int32, device=self.device) # Need to be int to use emb layer
-        # Reshape the data to [B, n, 1]
-        # data_tensor = data_tensor.view(self.b_size, self.n_points, 1)  # [B, n, 1]
-        self.data = data_tensor
+        import numpy as np
+        arr = np.loadtxt(self.file_path, dtype=np.int32) 
+        # Convert to torch tensor
+        print("Read data from file:", self.file_path, "Shape:", arr.shape)
+        self.data = arr
         
     @staticmethod
     def get_metric():

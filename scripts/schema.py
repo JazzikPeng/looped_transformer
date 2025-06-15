@@ -20,13 +20,13 @@ gpu_schema = {
 }
 
 model_schema = {
-    "family": merge(tstring, allowed(["gpt2", "gpt2_loop", "gpt2_tying", "gpt2_with_emb_layer"])),
+    "family": merge(tstring, allowed(["gpt2", "gpt2_loop", "gpt2_tying", "gpt2_with_emb_layer", "gpt2_looped_with_emb_layer"])),
     "n_positions": merge(tinteger, required),  # maximum context length
     "n_dims": merge(tinteger, required),  # latent dimension
     "n_embd": merge(tinteger, required),
     "n_layer": merge(tinteger, required),
     "n_head": merge(tinteger, required),
-    "pred_type": merge(tstring, allowed(["regression", "classification"])),
+    "pred_type": merge(tstring, allowed(["regression", "classification"]), default("regression")),
     "pretrained_path": merge(tstring, nullable, default(None)),
     "loop_func": merge(tstring, default("z=f(x+z)"), allowed(
         ["z=f(x+z)", "z=f(x*z)"])),

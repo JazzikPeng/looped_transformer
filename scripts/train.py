@@ -54,6 +54,19 @@ def train_step(args, curriculum, model, xs, ys, optimizer, ctx, scaler):
         ys = ys.reshape(-1)  # [B * N]
         # compute cross entropy loss
         loss = F.cross_entropy(y_pred, ys)
+    elif args.model.family in ['gpt2_looped_with_emb_layer']:
+        n_loops = curriculum.n_loops
+        # Cast xs, and ys to long
+        xs = xs.long().cuda()
+        ys = ys.long().cuda()
+        horizon_start = max(0, n_loops - args.training.n_loop_window)
+
+        y_pred_list = model(xs, ys, horizon_start, n_loops)  
+        y_pred_arr = torch.cat(y_pred_list, dim=0)  # [B * K, n]
+        y_star_arr = torch.cat([ys] * len(y_pred_list), dim=0)  # [B * K, n]
+        loss = F.cross_entropy(y_pred_arr.reshape(-1, y_pred_arr.size(-1)), y_star_arr.reshape(-1))  # [B * K, n_classes], [B * K] Flatten
+        y_pred = y_pred_list[-1]  # [B, n]
+        y_pred = y_pred.reshape(-1, y_pred.size(-1))  # [B * N, n_classes]
     elif args.model.family in ['gpt2_loop']:
         n_loops = curriculum.n_loops  # K
         if ctx is not None:
@@ -153,7 +166,13 @@ def main(args, device):
                 batch = next(train_iter)
                 xs, ys = batch['x'].to(device), batch['y'].to(device)
             except StopIteration:
-                train_iter = iter(train_loader)
+                if args.training.use_fixed_dataset:
+                    # Quite trianing loop
+                    print("End of training dataset, Quite Training for fixed dataset.")
+                    break
+                else:
+                    train_iter = iter(train_loader)
+                
         else:
             task_sampler = get_task_sampler(
                 task_name=args.training.task_name,
@@ -193,6 +212,12 @@ def main(args, device):
                             xs = xs.long().cuda()
                             ys = ys.long().cuda()
                             output = model(xs, ys)  # [B,]
+                        elif args.model.family in ['gpt2_looped_with_emb_layer']:
+                            xs = xs.long().cuda()
+                            ys = ys.long().cuda()
+                            n_loops = curriculum.n_loops
+                            output = model(xs, ys, 0, n_loops)
+                            output = output[-1]
                         else:
                             raise NotImplementedError
                         if args.model.pred_type == 'regression':
@@ -201,7 +226,7 @@ def main(args, device):
                         elif args.model.pred_type == 'classification':
                             point_wise_loss = F.cross_entropy(output.reshape(-1, output.size(-1)), ys.long().reshape(-1))
                             eval_loss = point_wise_loss
-            if args.model.family == "gpt2_with_emb_layer":
+            if args.model.family in ["gpt2_with_emb_layer", "gpt2_looped_with_emb_layer"]:
                 log_dict = {
                     "overall_train_loss": train_loss,
                     "loop_times": curriculum.n_loops,
