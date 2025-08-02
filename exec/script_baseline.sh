@@ -2,9 +2,9 @@
 n_gpu=0
 
 # Linear Regression
-#python scripts/train.py --config configs/base.yaml \
-#    --wandb.name "LR_baseline" \
-#    --gpu.n_gpu $n_gpu
+python scripts/train.py --config configs/base.yaml \
+   --wandb.name "LR_baseline" \
+   --gpu.n_gpu $n_gpu
 
 ## Sparse LR
 #python scripts/train.py --config configs/sparse_LR/base.yaml \
@@ -20,3 +20,8 @@ n_gpu=0
 #python scripts/train.py --config configs/relu_2nn_regression/base.yaml \
 #    --wandb.name "ReLU2NN_baseline" \
 #    --gpu.n_gpu $n_gpu
+
+## pHop baseline
+# python scripts/train.py --config configs/base_phop.yaml \
+#     --wandb.name "pHop_baseline" \
+#     --gpu.n_gpu $n_gpu

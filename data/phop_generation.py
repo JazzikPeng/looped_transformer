@@ -166,10 +166,10 @@ def generate_mini_k_hop_sequences():
     # Example usage
     seq_len = 256
     vocab_size = 4
-    p = 16
-    num_samples = 1000
+    p = 50
+    num_samples = 2000
     # Generate k-hop sequences and save to file
-    file_path = "../data/p_hop_sequences_mini.txt"
+    file_path = "../data/p_hop_sequences_test.txt"
     
     num_sequences = generate_k_hop_sequences(seq_len, vocab_size, p, num_samples, file_path)
     print(f"Generated {num_sequences} k-hop sequences and saved to {file_path}")
@@ -200,5 +200,5 @@ if __name__ == "__main__":
     
     # test_p_hop()
     # print(generate_k_hop_sequence(vocab_size=5, p=3, max_gap=4))
-    # generate_mini_k_hop_sequences()
-    generate_full_k_hop_sequences()
+    generate_mini_k_hop_sequences()
+    # generate_full_k_hop_sequences()

@@ -2,15 +2,15 @@
 n_gpu=0
 
 # Linear Regression  ###################################################################################################
-b=20
-T=15
-python scripts/train.py --config configs/base_loop.yaml \
-   --model.n_layer 1 \
-   --training.curriculum.loops.start $T \
-   --training.curriculum.loops.end $b \
-   --training.n_loop_window $T \
-   --wandb.name "LR_loop_L1_ends{$b}_T{$T}" \
-   --gpu.n_gpu $n_gpu
+# b=20
+# T=15
+# python scripts/train.py --config configs/base_loop.yaml \
+#    --model.n_layer 1 \
+#    --training.curriculum.loops.start $T \
+#    --training.curriculum.loops.end $b \
+#    --training.n_loop_window $T \
+#    --wandb.name "LR_loop_L1_ends{$b}_T{$T}" \
+#    --gpu.n_gpu $n_gpu
 
 # Sparse Linear Regression  ############################################################################################
 b=20
@@ -44,3 +44,14 @@ T=5
 #    --training.n_loop_window $T \
 #    --wandb.name "relu2nn_loop_L1_ends{$b}_T{$T}" \
 #    --gpu.n_gpu $n_gpu
+
+# pHop baseline ########################################################################################################
+b=12
+T=5
+python scripts/train.py --config configs/base_loop_phop.yaml \
+   --model.n_layer 1 \
+   --training.curriculum.loops.start $T \
+   --training.curriculum.loops.end $b \
+   --training.n_loop_window $T \
+   --wandb.name "LR_loop_L1_ends{$b}_T{$T}" \
+   --gpu.n_gpu $n_gpu

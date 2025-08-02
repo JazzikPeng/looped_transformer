@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SESSION_NAME="tf_loop"
-COMMAND="bash exec/script_loop.sh"
+COMMAND="bash exec/script_baseline.sh"
 ENV_NAME="loop_tf"
 
 # Create the session if it doesn't exist

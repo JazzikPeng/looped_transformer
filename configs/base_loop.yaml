@@ -8,6 +8,7 @@ gpu:
 
 model:
     family: gpt2_loop
+    pred_type: regression
     n_embd: 256
     n_layer: 1
     n_head: 8
@@ -41,4 +42,4 @@ training:
     n_loop_window: 20
 
 out_dir: ./results2/linear_regression_loop
-debug_mode: False
+debug_mode: True
