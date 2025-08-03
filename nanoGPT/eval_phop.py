@@ -7,12 +7,12 @@ import os
 import pickle
 from contextlib import nullcontext
 import torch
-from model import GPTConfig, GPT
+from model import GPTConfig, GPT, GPTLooped
 
 # -----------------------------------------------------------------------------
 init_from = 'resume' # either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')
 out_dir = 'out-phop-16' # ignored if init_from is not 'resume'
-model_output_name = 'ckpt_6_6.pt'
+model_output_name = 'ckpt_12_12.pt'
 start = "\n" # or "<|endoftext|>" or etc. Can also specify a file, use as: "FILE:prompt.txt"
 num_samples = 1 # number of samples to draw
 max_new_tokens = 80 # number of tokens generated in each sample
@@ -22,6 +22,10 @@ seed = 1337
 device = 'cuda:1' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32' or 'bfloat16' or 'float16'
 compile = False # use PyTorch 2.0 to compile the model to be faster
+# Loop config
+num_loops = 2
+loop_start = 0
+loop_func = 'z=f(x+z)'
 exec(open('configurator.py').read()) # overrides from command line or config file
 # -----------------------------------------------------------------------------
 
@@ -39,7 +43,9 @@ if init_from == 'resume':
     ckpt_path = os.path.join(out_dir, model_output_name)
     checkpoint = torch.load(ckpt_path, map_location=device)
     gptconf = GPTConfig(**checkpoint['model_args'])
-    model = GPT(gptconf)
+    print("checkpoint model args:", checkpoint['model_args'])
+    print("looped model:", 'looped' in out_dir)
+    model = GPTLooped(gptconf, num_loops=num_loops, loop_start=loop_start, loop_func=loop_func) if 'looped' in out_dir else GPT(gptconf)
     state_dict = checkpoint['model']
     unwanted_prefix = '_orig_mod.'
     for k,v in list(state_dict.items()):
