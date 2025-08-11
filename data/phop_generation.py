@@ -12,10 +12,10 @@ import concurrent.futures
 import os
 
 TOKEN_MAP = {
-    "p": 0,  # Start of sequence
-    "s": 1,  # Start of hops
+    "p": 0,  # p value
+    "s": 1,  # Start of sequence
     "e": 2,  # End of sequence
-    "hop": 3,  # Hop token
+    "hop": 3,  # Start of hop outputs
 }
 
 RESERVED_TOKENS_SIZE = len(TOKEN_MAP)
@@ -104,7 +104,9 @@ def generate_one_k_hop_sequence(seq_len:int , vocab_size: int, p: int) -> Option
     
     # Check if results are valid and return
     if len(res) < p + 1: # p+1 means the first element doesn't count as a hop
-        return None
+        # return None
+        # If not valid re-run the generation
+        return generate_one_k_hop_sequence(seq_len, vocab_size, p)
 
     # Process sequence results for training 
     training_seq = [TOKEN_MAP['p']] + [p] + [TOKEN_MAP['s']] + seq + [TOKEN_MAP['e']] + [TOKEN_MAP['hop']] + [x[1] for x in res]
@@ -128,6 +130,7 @@ def generate_k_hop_sequences(seq_len:int , vocab_size: int, p: int, num_samples:
 
     num_sequences = 0
     with open(file_path, 'w') as f:
+        print(file_path)
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = []
             for _ in range(num_samples):
@@ -174,17 +177,19 @@ def generate_mini_k_hop_sequences():
     num_sequences = generate_k_hop_sequences(seq_len, vocab_size, p, num_samples, file_path)
     print(f"Generated {num_sequences} k-hop sequences and saved to {file_path}")
 
-def generate_full_k_hop_sequences():
+def generate_full_k_hop_sequences(p=16, seq_len=256, vocab_size=4):
     # Example usage
-    seq_len = 256
-    vocab_size = 4
-    p = 16
+    seq_len = seq_len
+    vocab_size = vocab_size
+    p = p
     num_samples = 4262000
     # Generate k-hop sequences and save to file
-    file_path = "../data/p_hop_sequences.txt"
-    
+    file_path = "../data/p_hop_sequences_{}_{}_{}.txt".format(p, seq_len, vocab_size)
+
     num_sequences = generate_k_hop_sequences(seq_len, vocab_size, p, num_samples, file_path)
     print(f"Generated {num_sequences} k-hop sequences and saved to {file_path}")
+
+
 
 if __name__ == "__main__":
     # # Run the unit test
@@ -200,5 +205,13 @@ if __name__ == "__main__":
     
     # test_p_hop()
     # print(generate_k_hop_sequence(vocab_size=5, p=3, max_gap=4))
-    generate_mini_k_hop_sequences()
+    # generate_mini_k_hop_sequences()
     # generate_full_k_hop_sequences()
+    
+    from difficulty_to_l import difficulty_to_l
+    import time
+    for (p, vocab_size, seq_len), num_loops in difficulty_to_l.items():
+        start_time = time.time()
+        generate_full_k_hop_sequences(p=p, seq_len=seq_len, vocab_size=vocab_size)
+        end_time = time.time()
+        print(f"Generated sequences for (p={p}, vocab_size={vocab_size}, seq_len={seq_len}) in {end_time - start_time} seconds.")   
