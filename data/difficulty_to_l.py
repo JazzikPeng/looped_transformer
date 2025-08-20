@@ -11,5 +11,3 @@ difficulty_to_l = {
     (p_values[i], vocab_size[i], seq_len[i]) : num_loops[i] for i in range(len(p_values))
 }
 
-
-

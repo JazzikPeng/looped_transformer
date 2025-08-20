@@ -11,19 +11,20 @@ from model import GPTConfig, GPT, GPTLooped
 
 # -----------------------------------------------------------------------------
 init_from = 'resume' # either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')
-out_dir = 'out-phop-16' # ignored if init_from is not 'resume'
-model_output_name = 'ckpt_12_12.pt'
+out_dir = 'out-phop-32-looped' # ignored if init_from is not 'resume'
+model_output_name = 'ckpt_2_0_6.pt'
+batch_size = 256
 start = "\n" # or "<|endoftext|>" or etc. Can also specify a file, use as: "FILE:prompt.txt"
 num_samples = 1 # number of samples to draw
 max_new_tokens = 80 # number of tokens generated in each sample
-temperature = 1.0 # 1.0 = no change, < 1.0 = less random, > 1.0 = more random, in predictions
+temperature = 0.1 # 1.0 = no change, < 1.0 = less random, > 1.0 = more random, in predictions
 top_k = 1 # retain only the top_k most likely tokens, clamp others to have 0 probability
 seed = 1337
 device = 'cuda:1' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32' or 'bfloat16' or 'float16'
 compile = False # use PyTorch 2.0 to compile the model to be faster
 # Loop config
-num_loops = 2
+num_loops = 6
 loop_start = 0
 loop_func = 'z=f(x+z)'
 exec(open('configurator.py').read()) # overrides from command line or config file
@@ -70,12 +71,41 @@ start_idx = torch.where(data[0]==3)[0].item()
 x = data[:, :start_idx+1]  # all but last token
 y = data[:, start_idx+1:start_idx+1+17]    # last token as target
 
-# run generation
+# Convert evaluation to batches for model inference
+pred_batches = []
+
 with torch.no_grad():
     with ctx:
-        for k in range(num_samples):
-            pred = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
-            print('---------------')
+        for start in range(0, x.size(0), batch_size):
+            end = min(start + batch_size, x.size(0))
+            x_batch = x[start:end]  # take a batch of inputs
+            
+            pred = model.generate(
+                x_batch,
+                max_new_tokens,
+                temperature=temperature,
+                top_k=top_k
+            )
+            pred_batches.append(pred)  
+            print("Running batch", x_batch.size(0), "/", x.size(0))
+
+pred = torch.cat(pred_batches, dim=0)
+print(pred.shape)
+
+# # run generation
+# with torch.no_grad():
+#     with ctx:
+#         pred1 = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
+#         print('---------------')
+    
+    
+# with torch.no_grad():
+#     with ctx:
+#         pred = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
+#         print('---------------')
+
+            
+# print("pred_batch and pred are the same:", torch.equal(pred1, pred))
 
 # Evaluation methods 1: Evaluate only on the last results at p
 # Find elements after len(x)

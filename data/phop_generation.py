@@ -165,15 +165,15 @@ def test_one_hop():
     assert penultimate_idx == 6
     assert hop_value == 1
 
-def generate_mini_k_hop_sequences():
+def generate_mini_k_hop_sequences(p=16, seq_len=256, vocab_size=4):
     # Example usage
-    seq_len = 256
-    vocab_size = 4
-    p = 50
+    seq_len = seq_len
+    vocab_size = vocab_size
+    p = 100
     num_samples = 2000
     # Generate k-hop sequences and save to file
-    file_path = "../data/p_hop_sequences_test.txt"
-    
+    file_path = "../data/p_hop_sequences_{}_{}_{}_test.txt".format(p, seq_len, vocab_size)
+
     num_sequences = generate_k_hop_sequences(seq_len, vocab_size, p, num_samples, file_path)
     print(f"Generated {num_sequences} k-hop sequences and saved to {file_path}")
 
@@ -182,7 +182,7 @@ def generate_full_k_hop_sequences(p=16, seq_len=256, vocab_size=4):
     seq_len = seq_len
     vocab_size = vocab_size
     p = p
-    num_samples = 4262000
+    num_samples = 4001000
     # Generate k-hop sequences and save to file
     file_path = "../data/p_hop_sequences_{}_{}_{}.txt".format(p, seq_len, vocab_size)
 
@@ -213,5 +213,6 @@ if __name__ == "__main__":
     for (p, vocab_size, seq_len), num_loops in difficulty_to_l.items():
         start_time = time.time()
         generate_full_k_hop_sequences(p=p, seq_len=seq_len, vocab_size=vocab_size)
+        generate_mini_k_hop_sequences(p=p, seq_len=seq_len, vocab_size=vocab_size)
         end_time = time.time()
         print(f"Generated sequences for (p={p}, vocab_size={vocab_size}, seq_len={seq_len}) in {end_time - start_time} seconds.")   

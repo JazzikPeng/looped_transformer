@@ -82,6 +82,9 @@ backend = 'nccl' # 'nccl', 'gloo', etc.
 device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1' etc., or try 'mps' on macbooks
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
 compile = False # use PyTorch 2.0 to compile the model to be faster
+# data path
+train_npy = '/home/jupyter/project/looped_transformer/nanoGPT/data/phop/p_hop_sequences_16_256_4_train.npy'
+test_npy = '/home/jupyter/project/looped_transformer/nanoGPT/data/phop/p_hop_sequences_16_256_4_test.npy'
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
 exec(open('configurator.py').read()) # overrides from command line or config file
@@ -101,7 +104,7 @@ if ddp:
     seed_offset = ddp_rank # each process gets a different seed
     # world_size number of processes will be training simultaneously, so we can scale
     # down the desired gradient accumulation iterations per process proportionally
-    assert gradient_accumulation_steps % ddp_world_size == 0
+    assert gradient_accumulation_steps % ddp_world_size == 0, f'gradient_accumulation_steps {gradient_accumulation_steps} must be divisible by ddp_world_size {ddp_world_size}'
     gradient_accumulation_steps //= ddp_world_size
 else:
     # if not ddp, we are running on a single gpu, and one process
@@ -141,7 +144,7 @@ data_dir = os.path.join('data', dataset)
 #     return x, y
 
 def get_batch(split):
-    return get_phop_batch(split, batch_size=batch_size, device=device) # fetch a batch from the phop dataset
+    return get_phop_batch(split, (train_npy, test_npy), batch_size=batch_size, device=device) # fetch a batch from the phop dataset
 
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
 iter_num = 0
@@ -308,7 +311,7 @@ while True:
                     'best_val_loss': best_val_loss,
                     'config': config,
                 }
-                print(f"saving checkpoint to {out_dir}")
+                print(f"saving checkpoint to {out_dir}_{model_output_name}")
                 torch.save(checkpoint, os.path.join(out_dir, model_output_name))
     if iter_num == 0 and eval_only:
         break

@@ -12,17 +12,38 @@ import pickle
 import torch
 import numpy as np
 
+# file_path = '/home/jupyter/project/looped_transformer/nanoGPT/data/phop/p_hop_sequences_32_512_8.txt'
+# train_npy = '/home/jupyter/project/looped_transformer/nanoGPT/data/phop/p_hop_sequences_32_512_8_train.npy'
+# test_npy = '/home/jupyter/project/looped_transformer/nanoGPT/data/phop/p_hop_sequences_32_512_8_test.npy'
 
-file_path = '/home/jupyter/project/nanoGPT/data/phop/p_hop_sequences.txt'
+file_path = '/home/jupyter/project/looped_transformer/nanoGPT/data/phop/p_hop_sequences_16_256_4.txt'
+train_npy = '/home/jupyter/project/looped_transformer/nanoGPT/data/phop/p_hop_sequences_16_256_4_train.npy'
+test_npy = '/home/jupyter/project/looped_transformer/nanoGPT/data/phop/p_hop_sequences_16_256_4_test.npy'
+
+# file_path = '/home/jupyter/project/looped_transformer/nanoGPT/data/phop/p_hop_sequences_64_1024_16.txt'
+# train_npy = '/home/jupyter/project/looped_transformer/nanoGPT/data/phop/p_hop_sequences_64_1024_16_train.npy'
+# test_npy = '/home/jupyter/project/looped_transformer/nanoGPT/data/phop/p_hop_sequences_64_1024_16_test.npy'
 
 data = np.loadtxt(file_path, dtype=np.int32, delimiter=' ')
+# Find p from the file sequence
+# Read file
+seq = [int(x) for x in data[0]]
+    
+p_idx = seq.index(0)
+start_idx = seq.index(1)
+end_idx = seq.index(2)
+output_start_idx = seq.index(3)
 
-# 278 - 16 - 1 = 261 
-p = 16
-BLOCK_SIZE = 277
+p = seq[p_idx + 1]
+input_seq = seq[start_idx + 1: end_idx]
+BLOCK_SIZE = len(input_seq) + p + 1 + 4 # 4 is the number of special tokens
 SEQ_LENGTH = BLOCK_SIZE
 SPECIAL_MASK_TOKEN = -1 # Speical Mask Token Don't go into loss calculation
+TRAIN_SIZE = 4000000
+TEST_SIZE = 1000
 
+print(f"p: {p}, BLOCK_SIZE: {BLOCK_SIZE}, SEQ_LENGTH: {SEQ_LENGTH}")
+    
 def generate_phop_training_data(data, p=16):
     """
     Generate pHop training data from the input data.
@@ -60,26 +81,26 @@ def generate_phop_training_data_vectorized(data, p=16):
     x_padded[:, :] = data[:, :-1] 
     y_padded[:, -p-1:] = data[:, -p-1:]
     
-    # Stack to create final array of shape (batch_size, p+1, 2, SEQ_LENGTH)
+    # Stack to create final array of shape (batch_size, 2, SEQ_LENGTH)
     sequences = np.stack([x_padded, y_padded], axis=1)
     return sequences
 
 import functools
 @functools.lru_cache(maxsize=2)
-def load_phop_data(split):
+def load_phop_data(split, data_path):
     if split == 'train':
-        path = '/home/jupyter/project/nanoGPT/data/phop/p_hop_sequences_train.npy'
-        total_samples = 4000000
+        path = data_path[0]
+        total_samples = TRAIN_SIZE
     else:
-        path = '/home/jupyter/project/nanoGPT/data/phop/p_hop_sequences_test.npy'
-        total_samples = 262000
+        path = data_path[1]
+        total_samples = TEST_SIZE
 
     data = np.load(path)
     data = data.reshape(total_samples, 2, SEQ_LENGTH)  # assumes (N, 2, seq_len)
     return data
 
-def get_phop_batch(split, batch_size=12, device=None):
-    data = load_phop_data(split)
+def get_phop_batch(split, data_path, batch_size=12, device=None):
+    data = load_phop_data(split, data_path)
     # Random select batch_size samples
     ix = torch.randint(0, data.shape[0], (batch_size,))
     x = data[ix, 0, :]  # Select x sequences
@@ -148,12 +169,12 @@ if __name__== "__main__":
     # Read p_hop_sequences_dev.txt and prepare them in to array and write to bin file
     # Split Train Test data
     if True:
-        train, test = data[:4000000], data[4000000:4000000+262000]
+        train, test = data[:TRAIN_SIZE], data[TRAIN_SIZE:TRAIN_SIZE+TEST_SIZE]
         print("Train shape:", train.shape, "Test shape:", test.shape)
         train = generate_phop_training_data_vectorized(train, p)
         train = train.reshape(len(train), 2, SEQ_LENGTH) 
         # Save to np array
-        np.save('/home/jupyter/project/nanoGPT/data/phop/p_hop_sequences_train.npy', train)
+        np.save(train_npy, train)
         
         # output_file = '/home/jupyter/project/nanoGPT/data/phop/p_hop_sequences_dev_train.bin'
         # with open(output_file, 'wb') as f:
@@ -162,7 +183,7 @@ if __name__== "__main__":
         
         test = generate_phop_training_data_vectorized(test, p)
         test = test.reshape(len(test), 2, SEQ_LENGTH) 
-        np.save('/home/jupyter/project/nanoGPT/data/phop/p_hop_sequences_test.npy', test)
+        np.save(test_npy, test)
 
         # output_file = '/home/jupyter/project/nanoGPT/data/phop/p_hop_sequences_dev_test.bin'
         # with open(output_file, 'wb') as f:
@@ -171,7 +192,7 @@ if __name__== "__main__":
         
     # Test the get_phop_batch function
     if True:
-        x, y = get_phop_batch('train', batch_size=1, device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+        x, y = get_phop_batch('train', (train_npy, test_npy), batch_size=1, device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
         print("Batch x:", x, "Batch y:", y)
         
         

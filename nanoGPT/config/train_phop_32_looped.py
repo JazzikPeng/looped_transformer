@@ -1,23 +1,23 @@
 # train a miniature character-level shakespeare model
 # good for debugging and playing on macbooks and such
-init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*' or 'scratch_loop'
-out_dir = 'out-phop-16'
-model_output_name = 'ckpt_2_6_768.pt' # ckpt_<n_layer>_<n_head>_<nn_embd>.pt
+init_from = 'scratch_loop' # 'scratch' or 'resume' or 'gpt2*' or 'scratch_loop'
+out_dir = 'out-phop-32-looped'
+model_output_name = 'ckpt_2_0_6.pt' # ckpt_<base_block_size>_<loop_start>_<num_loops>.pt
 eval_interval = 1000 # keep frequent because we'll overfit
 eval_iters = 200
 log_interval = 100 # don't print too too often
 
 # system
-device = 'cuda:1'
-compile = False # do not torch compile the model
+device = 'cuda'
+compile = True # do not torch compile the model
 # we expect to overfit on this small dataset, so only save when val improves
 always_save_checkpoint = False
 
-wandb_log = False # override via command line if you like
-wandb_project = 'phop-16'
-wandb_run_name = 'phop-16-4M-2_6_768'
+wandb_log = True # override via command line if you like
+wandb_project = 'phop-32'
+wandb_run_name = 'phop-32-4M-looped_2_0_6' # <base_block_size>_<loop_start>_<num_loops>.pt
 
-dataset = 'phop'
+dataset = 'phop-32'
 gradient_accumulation_steps = 1
 batch_size = 256
 block_size = 768 # context of up to 278 previous characters
@@ -27,6 +27,11 @@ n_layer = 2
 n_head = 6
 n_embd = 768
 dropout = 0.0
+
+# Loop config
+num_loops = 6
+loop_start = 0
+loop_func = 'z=f(x+z)'
 
 # adamw optimizer
 learning_rate = 6e-4 # max learning rate
